@@ -3,6 +3,8 @@ import uasyncio
 import _thread
 import ujson
 import uio
+import time
+import machine
 from machine import Pin
 
 
@@ -71,7 +73,17 @@ class Registry:
 
 
     async def run(self):
-        await self.mqtt_client.connect()
+        while True:
+            try:
+                await self.mqtt_client.connect()
+                break
+            except Exception as e:
+                if self.debug:
+                    print('Error connecting to MQTT broker:', e)
+
+                time.sleep(5)
+                if str(e) == 'Wifi Internal Error':
+                    machine.reset()
 
         async def up_event_loop():
             while True:
