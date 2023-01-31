@@ -1,6 +1,6 @@
 # Registers over MQTT for MicroPython
 
-For register protocol, see: https://github.com/burgrp/mqtt-reg.
+Check register protocol: https://github.com/burgrp/mqtt-reg.
 
 Example:
 ```python
