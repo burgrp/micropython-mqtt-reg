@@ -124,7 +124,7 @@ class Registry:
         self.server_names = self.server_handler.get_names()
         self.client_names = self.client_handler.get_names()
 
-        self.is_timeouts = {}
+        self.client_timeouts = {}
 
         mqtt_config = mqtt_as.config.copy()
         mqtt_config['ssid'] = wifi_ssid
@@ -178,31 +178,42 @@ class Registry:
         if not self.advertise_in_progress:
             uasyncio.create_task(do_async())
 
-    def reset_is_timeout(self, name, first=False):
+    def reset_client_timeout(self, name, first=False):
 
-        async def do_async():
+        async def do_async(first):
             while True:
+                try:
+                    if not first:
+                        await uasyncio.sleep_ms(random.randint(8000, 12000))
 
-                if not first:
-                    await uasyncio.sleep_ms(random.randint(8000, 12000))
+                    first = False
 
-                if self.debug:
-                    print('Forcing get for client register', name)
+                    if self.debug:
+                        print('Forcing get for client register', name)
 
-                await self.mqtt_client.publish('register/'+name+'/get', '', qos=1)
-                await uasyncio.sleep_ms(10000)
+                    await self.mqtt_client.publish('register/'+name+'/get', '', qos=1)
+                    await uasyncio.sleep_ms(10000)
 
-                if self.debug:
-                    print('Timeout for client register', name)
+                    if self.debug:
+                        print('Timeout for client register', name)
 
-                self.client_handler.set_value(name, None)
+                    self.client_handler.set_value(name, None)
 
-        if name in self.is_timeouts:
-            self.is_timeouts[name].cancel()
+                except Exception as e:
+                    if self.debug:
+                        print('Error in reset_client_timeout:', e)
 
-        self.is_timeouts[name] = uasyncio.create_task(do_async())
+        if name in self.client_timeouts:
+            self.client_timeouts[name].cancel()
 
-    async def run(self):
+        self.client_timeouts[name] = uasyncio.create_task(do_async(first))
+
+    async def run_async(self):
+
+        self.led(True)
+        await uasyncio.sleep_ms(200)
+        self.led(False)
+
         while True:
             try:
                 await self.mqtt_client.connect()
@@ -211,42 +222,52 @@ class Registry:
                 if self.debug:
                     print('Error connecting to MQTT broker:', e)
 
-                time.sleep(5)
+                await uasyncio.sleep_ms(5000)
                 if str(e) == 'Wifi Internal Error':
                     machine.reset()
 
         async def up_event_loop():
             while True:
-                await self.mqtt_client.up.wait()
-                self.mqtt_client.up.clear()
-                self.led(True)
+                try:
+                    await self.mqtt_client.up.wait()
+                    self.mqtt_client.up.clear()
+                    self.led(True)
 
-                async def subscribe(topic):
+                    async def subscribe(topic):
+                        if self.debug:
+                            print('Subscribing to:', topic)
+
+                        await self.mqtt_client.subscribe(topic, qos=1)
+
+                    if len(self.server_names) > 0:
+                        await subscribe('register/advertise!')
+
+                    for name in self.server_names:
+                        await subscribe('register/'+name+'/get')
+                        await subscribe('register/'+name+'/set')
+
+                    for name in self.client_names:
+                        await subscribe('register/'+name+'/is')
+                        self.reset_client_timeout(name, first=True)
+
+                    self.advertise_registers()
+
+                except Exception as e:
                     if self.debug:
-                        print('Subscribing to:', topic)
+                        print('Error in up_event_loop:', e)
 
-                    await self.mqtt_client.subscribe(topic, qos=1)
-
-                if len(self.server_names) > 0:
-                    await subscribe('register/advertise!')
-
-                for name in self.server_names:
-                    await subscribe('register/'+name+'/get')
-                    await subscribe('register/'+name+'/set')
-
-                for name in self.client_names:
-                    await subscribe('register/'+name+'/is')
-                    self.reset_is_timeout(name, first=True)
-
-                self.advertise_registers()
 
         uasyncio.create_task(up_event_loop())
 
         async def down_event_loop():
             while True:
-                await self.mqtt_client.down.wait()
-                self.mqtt_client.down.clear()
-                self.led(False)
+                try:
+                    await self.mqtt_client.down.wait()
+                    self.mqtt_client.down.clear()
+                    self.led(False)
+                except Exception as e:
+                    if self.debug:
+                        print('Error in down_event_loop:', e)
 
         uasyncio.create_task(down_event_loop())
 
@@ -287,7 +308,7 @@ class Registry:
                                                 uio.BytesIO(message.decode()))
                                             if self.debug:
                                                 print(name, 'is', value)
-                                            self.reset_is_timeout(name)
+                                            self.reset_client_timeout(name)
                                             self.client_handler.set_value(
                                                 name, value)
 
@@ -297,6 +318,9 @@ class Registry:
 
         await read_messages()
 
-    def start(self):
-        _thread.stack_size(32768)
-        _thread.start_new_thread(lambda: uasyncio.run(self.run()), ())
+    def start(self, background=False):
+        if background:
+            _thread.stack_size(32768)
+            _thread.start_new_thread(lambda: uasyncio.run(self.run_async()), ())
+        else:
+            uasyncio.run(self.run_async())
