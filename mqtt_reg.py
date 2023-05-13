@@ -147,6 +147,7 @@ class Registry:
         self.client_names = self.client_handler.get_names()
 
         self.client_timeouts = {}
+        self.publish_in_progress = {}
 
         mqtt_config = mqtt_as.config.copy()
         mqtt_config['ssid'] = wifi_ssid
@@ -176,9 +177,19 @@ class Registry:
 
         async def do_async():
             value = self.server_handler.get_value(name)
-            await self.__publish_json('register/'+name+'/is', value)
+            try:
+                await self.__publish_json('register/'+name+'/is', value)
+            except Exception as e:
+                print('Error publishing register value: ', e)
+            finally:
+                self.publish_in_progress[name] = False
 
-        uasyncio.create_task(do_async())
+        if name not in self.publish_in_progress or not self.publish_in_progress[name]:
+            self.publish_in_progress[name] = True
+            uasyncio.create_task(do_async())
+        else:
+            if self.debug:
+                print('Publish in progress, skipping')
 
     def advertise_registers(self):
 
