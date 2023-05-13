@@ -135,7 +135,7 @@ class Registry:
 
     advertise_in_progress = False
 
-    def __init__(self, wifi_ssid, wifi_password, mqtt_broker, server=[], client=[], ledPin=2, ledLogic=True, debug=False):
+    def __init__(self, wifi_ssid, wifi_password, mqtt_broker, server=[], client=[], online_cb=None, debug=False):
         self.debug = debug
 
         self.server_handler = ServerListHandler(
@@ -158,10 +158,9 @@ class Registry:
         mqtt_as.MQTTClient.DEBUG = debug
         self.mqtt_client = mqtt_as.MQTTClient(mqtt_config)
 
-        ledPin = Pin(ledPin, Pin.OUT)
-        self.led = lambda on: ledPin.value(on == ledLogic)
+        self.online_cb = online_cb if online_cb is not None else lambda online: None
 
-        self.led(False)
+        self.online_cb(False)
 
     async def __publish_json(self, topic, val):
         message = uio.BytesIO()
@@ -243,9 +242,9 @@ class Registry:
 
     async def run_async(self):
 
-        self.led(True)
+        self.online_cb(True)
         await uasyncio.sleep_ms(200)
-        self.led(False)
+        self.online_cb(False)
 
         while True:
             try:
@@ -264,7 +263,7 @@ class Registry:
                 try:
                     await self.mqtt_client.up.wait()
                     self.mqtt_client.up.clear()
-                    self.led(True)
+                    self.online_cb(True)
 
                     async def subscribe(topic):
                         if self.debug:
@@ -297,7 +296,7 @@ class Registry:
                 try:
                     await self.mqtt_client.down.wait()
                     self.mqtt_client.down.clear()
-                    self.led(False)
+                    self.online_cb(False)
                 except Exception as e:
                     if self.debug:
                         print('Error in down_event_loop:', e)
