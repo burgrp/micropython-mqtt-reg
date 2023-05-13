@@ -3,7 +3,6 @@ import uasyncio
 import _thread
 import ujson
 import uio
-import time
 import machine
 import random
 import btree
@@ -11,15 +10,37 @@ from machine import Pin
 
 class ServerRegister:
 
-    def __init__(self, name, meta):
+    def __init__(self, name, meta, value=None):
         self.name = name
         self.meta = meta
+        self.value = value
+        self.registry = None
 
     def get_name(self):
         return self.name
 
     def get_meta(self):
         return self.meta
+
+    def get_value(self):
+        return self.value
+
+    def set_value(self, value):
+        self.value = value
+
+    def set_value_local(self, value):
+        if self.value != value:
+            self.value = value
+            if self.registry is not None:
+                self.registry.publish_register_value(self.name)
+
+class ServerReadOnlyRegister(ServerRegister):
+
+    def __init__(self, name, meta, value=None):
+        super().__init__(name, meta, value)
+
+    def set_value(self, value):
+        raise Exception("Cannot set value of read-only register")
 
 __default_db = None
 
@@ -64,10 +85,11 @@ class BooleanPersistentServerRegister(PersistentServerRegister):
 
 class ServerListHandler:
 
-    def __init__(self, registers=[]):
+    def __init__(self, registry, registers=[]):
         self.registers = {}
         for register in registers:
             self.registers[register.get_name()] = register
+            register.registry = registry
 
     def get_names(self):
         return list(self.registers.keys())
@@ -117,7 +139,7 @@ class Registry:
         self.debug = debug
 
         self.server_handler = ServerListHandler(
-            server) if type(server) is list else server
+            self, server) if type(server) is list else server
         self.client_handler = ClientListHandler(
             client) if type(client) is list else client
 
