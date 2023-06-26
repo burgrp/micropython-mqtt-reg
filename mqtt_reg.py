@@ -6,7 +6,7 @@ import uio
 import machine
 import random
 import btree
-from machine import Pin
+import struct
 
 class ServerRegister:
 
@@ -82,6 +82,17 @@ class BooleanPersistentServerRegister(PersistentServerRegister):
 
     def from_bytes(self, value):
         return True if value == b'\1' else False
+
+class FloatPersistentServerRegister(PersistentServerRegister):
+
+    def __init__(self, name, meta, default=False, db = None):
+        super().__init__(name, meta, default, db)
+
+    def to_bytes(self, value):
+        return struct.pack('f', value)
+
+    def from_bytes(self, value):
+        return struct.unpack('f', value)[0]
 
 class ServerListHandler:
 
@@ -175,16 +186,23 @@ class Registry:
     def publish_register_value(self, name):
 
         async def do_async():
+
             value = self.server_handler.get_value(name)
+
+            if self.debug:
+                print('Publishing register value:', name, value)
+
             try:
                 await self.__publish_json('register/'+name+'/is', value)
             except Exception as e:
                 print('Error publishing register value: ', e)
             finally:
-                self.publish_in_progress[name] = False
+                pubs = self.publish_in_progress[name]
+                if pubs > 0:
+                    self.publish_in_progress[name] =  pubs - 1
 
-        if name not in self.publish_in_progress or not self.publish_in_progress[name]:
-            self.publish_in_progress[name] = True
+        if name not in self.publish_in_progress or self.publish_in_progress[name] < 5:
+            self.publish_in_progress[name] = 1
             uasyncio.create_task(do_async())
         else:
             if self.debug:
