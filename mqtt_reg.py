@@ -194,6 +194,9 @@ class Registry:
 
             try:
                 await self.__publish_json('register/'+name+'/is', value)
+                if self.debug:
+                    print('OK, published register value:', name, value)
+
             except Exception as e:
                 print('Error publishing register value: ', e)
             finally:
@@ -201,8 +204,11 @@ class Registry:
                 if pubs > 0:
                     self.publish_in_progress[name] =  pubs - 1
 
-        if name not in self.publish_in_progress or self.publish_in_progress[name] < 5:
-            self.publish_in_progress[name] = 1
+        if name not in self.publish_in_progress:
+            self.publish_in_progress[name] = 0
+
+        if self.publish_in_progress[name] < 2:
+            self.publish_in_progress[name] = self.publish_in_progress[name] + 1
             uasyncio.create_task(do_async())
         else:
             if self.debug:
