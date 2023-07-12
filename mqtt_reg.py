@@ -181,7 +181,7 @@ class Registry:
 
         message = message.getvalue()
 
-        await self.mqtt_client.publish(topic, message, qos=1)
+        await self.mqtt_client.publish(topic, message, qos=0)
 
     def publish_register_value(self, name):
 
@@ -247,7 +247,7 @@ class Registry:
                     if self.debug:
                         print('Forcing get for client register', name)
 
-                    await self.mqtt_client.publish('register/'+name+'/get', '', qos=1)
+                    await self.mqtt_client.publish('register/'+name+'/get', '', qos=0)
                     await uasyncio.sleep_ms(10000)
 
                     if self.debug:
@@ -293,7 +293,7 @@ class Registry:
                         if self.debug:
                             print('Subscribing to:', topic)
 
-                        await self.mqtt_client.subscribe(topic, qos=1)
+                        await self.mqtt_client.subscribe(topic, qos=0)
 
                     if len(self.server_names) > 0:
                         await subscribe('register/advertise!')
